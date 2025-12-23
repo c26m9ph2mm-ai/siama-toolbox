@@ -103,9 +103,9 @@ if menu == "🏠 Home":
     
     st.markdown("---")
     st.subheader("📦 The Three Toolkits")
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown("""
         **1. Stakeholder Identification Toolkit (SIT)**
@@ -114,7 +114,7 @@ if menu == "🏠 Home":
         - Maps stakeholder relationships
         - Visualizes supply chain
         """)
-    
+
     with col2:
         st.markdown("""
         **2. Stakeholder Analysis Toolkit (SAT)**
@@ -123,7 +123,7 @@ if menu == "🏠 Home":
         - Conflict resolution strategies
         - Knowledge & responsibility mapping
         """)
-    
+
     with col3:
         st.markdown("""
         **3. Market Analysis Toolkit (MAT)**
@@ -132,7 +132,7 @@ if menu == "🏠 Home":
         - Customer insights
         - Brand assessment
         """)
-    
+
     st.info("👈 Use the sidebar to navigate through each toolkit")
 
 # SIT - Stakeholder Identification Toolkit
