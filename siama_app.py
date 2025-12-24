@@ -61,8 +61,8 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "Navigate",
-    ["🏠 Home", "1️⃣ SIT - Stakeholder Identification", "2️⃣ SAT - Stakeholder Analysis", 
-     "3️⃣ MAT - Market Analysis", "📊 Summary & Export"]
+    ["🏠 Home", "1️⃣ SIT - Stakeholder Identification", "2️⃣ SAT - Stakeholder Analysis",
+     "3️⃣ MAT - Market Analysis", "4️⃣ Nature of Craft", "📊 Summary & Export"]
 )
 
 # Home Page
@@ -1371,6 +1371,301 @@ elif menu == "3️⃣ MAT - Market Analysis":
                 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             st.success("✅ Brand Audit saved!")
+
+# Nature of Craft
+elif menu == "4️⃣ Nature of Craft":
+    st.markdown('<div class="main-header">Nature of Craft - 5P Framework</div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    The 5P Framework helps define and analyze the nature of your craft across five key dimensions:
+    **Product**, **Proficiency**, **Process**, **Purpose**, and **Portrayal**.
+    """)
+
+    # Display schematic diagram
+    st.markdown("---")
+    st.subheader("📐 Schematic Diagram of Craft Definition")
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.image("schematic.jpg", caption="Figure 2.1: Schematic diagram of definition of craft", use_column_width=True)
+
+    with col2:
+        st.markdown("""
+        ### The 5P Layers
+
+        From innermost to outermost:
+
+        1. **Portrayal** (Core)
+        2. **Purpose**
+        3. **Process**
+        4. **Proficiency**
+        5. **Product** (Outer)
+
+        Each layer represents a different aspect of craft nature, from its deepest meaning to its market manifestation.
+        """)
+
+    st.markdown("---")
+
+    # Initialize session state for nature of craft
+    if 'nature_of_craft' not in st.session_state:
+        st.session_state.nature_of_craft = {
+            'current_status': {},
+            'desired_status': {}
+        }
+
+    # Define the 5P Framework data structure
+    framework_data = {
+        "Product (Any Craft product)": {
+            "secondary": ["Utilitarian", "Decorative Artefacts"],
+            "tertiary": ["Functional Utility"]
+        },
+        "Proficiency (Needs a skill)": {
+            "secondary": ["Material Understanding", "Practical knowledge", "Craftsmanship", "Experience", "Emotional Value Creation"],
+            "tertiary": ["Skill-based Activity", "Intuitive Learning", "Skill sharing", "Craft Disciplines", "Sensory Experience", "Aesthetic Judgement", "Craft Knowledge"]
+        },
+        "Process (follows a process)": {
+            "secondary": ["Sustainable manufacturing", "Material Manipulation Techniques", "Physical World Interaction", "Local Production", "Network Engagement"],
+            "tertiary": ["Eco-effective process", "Non-industrial Production", "Community Collaboration method"]
+        },
+        "Purpose (to fulfil a purpose)": {
+            "secondary": ["Prosumption", "Contextual lifestyle", "Economical aspect", "Self-satisfaction", "Aesthetic value"],
+            "tertiary": ["Consumer Market Focus", "Consumer Behaviour", "Community Economy"]
+        },
+        "Portrayal (portrays a meaning)": {
+            "secondary": ["Social Significance", "Creative Expression", "Cultural and Religious Representation"],
+            "tertiary": ["Traditional Folkloric", "Ideology", "Local Culture", "Cultural Heritage", "Cultural Symbolism", "Traditional Wisdom", "Self-Expression", "Individual Works Conception"]
+        }
+    }
+
+    # Create tabs for Current and Desired Status
+    status_tabs = st.tabs(["📍 Current Status", "🎯 Desired New Status"])
+
+    # Tab 1: Current Status
+    with status_tabs[0]:
+        st.markdown("### Current Status of Your Craft")
+        st.info("Select the characteristics that best describe your craft's **current** nature across the 5P dimensions.")
+
+        for primary, content in framework_data.items():
+            with st.expander(f"**{primary}**", expanded=False):
+                st.markdown(f"##### {primary}")
+
+                # Secondary Nature
+                st.markdown("**Secondary Nature:**")
+                for item in content['secondary']:
+                    key = f"current_{primary}_{item}"
+                    if key not in st.session_state.nature_of_craft['current_status']:
+                        st.session_state.nature_of_craft['current_status'][key] = False
+
+                    st.session_state.nature_of_craft['current_status'][key] = st.checkbox(
+                        item,
+                        value=st.session_state.nature_of_craft['current_status'][key],
+                        key=f"cb_{key}"
+                    )
+
+                # Tertiary Nature (if exists)
+                if content['tertiary']:
+                    st.markdown("**Tertiary Nature:**")
+                    for item in content['tertiary']:
+                        key = f"current_{primary}_{item}"
+                        if key not in st.session_state.nature_of_craft['current_status']:
+                            st.session_state.nature_of_craft['current_status'][key] = False
+
+                        st.session_state.nature_of_craft['current_status'][key] = st.checkbox(
+                            item,
+                            value=st.session_state.nature_of_craft['current_status'][key],
+                            key=f"cb_{key}"
+                        )
+
+        # Save Current Status
+        if st.button("💾 Save Current Status", use_container_width=True, type="primary"):
+            # Count selections
+            current_selections = sum(1 for v in st.session_state.nature_of_craft['current_status'].values() if v)
+            st.success(f"✅ Current status saved! ({current_selections} characteristics selected)")
+
+    # Tab 2: Desired New Status
+    with status_tabs[1]:
+        st.markdown("### Desired New Status of Your Craft")
+        st.info("Select the characteristics you want your craft to **achieve** or **develop** across the 5P dimensions.")
+
+        for primary, content in framework_data.items():
+            with st.expander(f"**{primary}**", expanded=False):
+                st.markdown(f"##### {primary}")
+
+                # Secondary Nature
+                st.markdown("**Secondary Nature:**")
+                for item in content['secondary']:
+                    key = f"desired_{primary}_{item}"
+                    if key not in st.session_state.nature_of_craft['desired_status']:
+                        st.session_state.nature_of_craft['desired_status'][key] = False
+
+                    st.session_state.nature_of_craft['desired_status'][key] = st.checkbox(
+                        item,
+                        value=st.session_state.nature_of_craft['desired_status'][key],
+                        key=f"cb_{key}"
+                    )
+
+                # Tertiary Nature (if exists)
+                if content['tertiary']:
+                    st.markdown("**Tertiary Nature:**")
+                    for item in content['tertiary']:
+                        key = f"desired_{primary}_{item}"
+                        if key not in st.session_state.nature_of_craft['desired_status']:
+                            st.session_state.nature_of_craft['desired_status'][key] = False
+
+                        st.session_state.nature_of_craft['desired_status'][key] = st.checkbox(
+                            item,
+                            value=st.session_state.nature_of_craft['desired_status'][key],
+                            key=f"cb_{key}"
+                        )
+
+        # Save Desired Status
+        if st.button("💾 Save Desired Status", use_container_width=True, type="primary"):
+            # Count selections
+            desired_selections = sum(1 for v in st.session_state.nature_of_craft['desired_status'].values() if v)
+            st.success(f"✅ Desired status saved! ({desired_selections} characteristics selected)")
+
+    # Analysis Section
+    st.markdown("---")
+    st.subheader("📊 Gap Analysis")
+
+    if any(st.session_state.nature_of_craft['current_status'].values()) or any(st.session_state.nature_of_craft['desired_status'].values()):
+
+        # Calculate statistics for each P
+        analysis_data = []
+
+        for primary in framework_data.keys():
+            # Count current selections for this P
+            current_count = sum(
+                1 for k, v in st.session_state.nature_of_craft['current_status'].items()
+                if v and k.startswith(f"current_{primary}")
+            )
+
+            # Count desired selections for this P
+            desired_count = sum(
+                1 for k, v in st.session_state.nature_of_craft['desired_status'].items()
+                if v and k.startswith(f"desired_{primary}")
+            )
+
+            # Calculate gap
+            gap = desired_count - current_count
+
+            analysis_data.append({
+                "Dimension": primary.split("(")[0].strip(),
+                "Current": current_count,
+                "Desired": desired_count,
+                "Gap": gap,
+                "Status": "✅ Achieved" if gap <= 0 else f"📈 Need {gap} more"
+            })
+
+        df_analysis = pd.DataFrame(analysis_data)
+        st.dataframe(df_analysis, use_container_width=True)
+
+        # Visualization
+        col1, col2 = st.columns(2)
+
+        with col1:
+            # Bar chart comparing current vs desired
+            fig = go.Figure()
+
+            fig.add_trace(go.Bar(
+                name='Current',
+                x=df_analysis['Dimension'],
+                y=df_analysis['Current'],
+                marker_color='lightblue'
+            ))
+
+            fig.add_trace(go.Bar(
+                name='Desired',
+                x=df_analysis['Dimension'],
+                y=df_analysis['Desired'],
+                marker_color='darkgreen'
+            ))
+
+            fig.update_layout(
+                title='Current vs Desired Status by Dimension',
+                barmode='group',
+                xaxis_title='5P Dimensions',
+                yaxis_title='Number of Characteristics',
+                height=400
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+
+        with col2:
+            # Gap visualization
+            fig2 = go.Figure()
+
+            colors = ['green' if x <= 0 else 'orange' for x in df_analysis['Gap']]
+
+            fig2.add_trace(go.Bar(
+                x=df_analysis['Dimension'],
+                y=df_analysis['Gap'],
+                marker_color=colors,
+                text=df_analysis['Gap'],
+                textposition='auto'
+            ))
+
+            fig2.update_layout(
+                title='Gap Analysis (Desired - Current)',
+                xaxis_title='5P Dimensions',
+                yaxis_title='Gap (positive = need development)',
+                height=400
+            )
+
+            st.plotly_chart(fig2, use_container_width=True)
+
+        # Recommendations
+        st.markdown("### 💡 Development Recommendations")
+
+        for _, row in df_analysis.iterrows():
+            if row['Gap'] > 0:
+                st.warning(f"**{row['Dimension']}**: Focus on developing {row['Gap']} additional characteristic(s) to reach your desired state.")
+            elif row['Gap'] == 0 and row['Current'] > 0:
+                st.success(f"**{row['Dimension']}**: You've achieved your desired state in this dimension!")
+
+        # Detailed comparison
+        st.markdown("---")
+        st.markdown("### 📋 Detailed Status Comparison")
+
+        comparison_data = []
+
+        for primary in framework_data.keys():
+            # Get all items for this primary
+            all_items = framework_data[primary]['secondary'] + framework_data[primary]['tertiary']
+
+            for item in all_items:
+                current_key = f"current_{primary}_{item}"
+                desired_key = f"desired_{primary}_{item}"
+
+                current_val = st.session_state.nature_of_craft['current_status'].get(current_key, False)
+                desired_val = st.session_state.nature_of_craft['desired_status'].get(desired_key, False)
+
+                if current_val or desired_val:  # Only show if selected in either
+                    status = ""
+                    if current_val and desired_val:
+                        status = "✅ Maintained"
+                    elif current_val and not desired_val:
+                        status = "⬇️ To reduce"
+                    elif not current_val and desired_val:
+                        status = "⬆️ To develop"
+
+                    comparison_data.append({
+                        "Dimension": primary.split("(")[0].strip(),
+                        "Characteristic": item,
+                        "Current": "✓" if current_val else "✗",
+                        "Desired": "✓" if desired_val else "✗",
+                        "Action": status
+                    })
+
+        if comparison_data:
+            df_comparison = pd.DataFrame(comparison_data)
+            st.dataframe(df_comparison, use_container_width=True)
+        else:
+            st.info("Select characteristics in both Current and Desired status to see detailed comparison.")
+
+    else:
+        st.info("👆 Complete the Current and Desired Status sections above to see gap analysis and recommendations.")
 
 # Summary & Export
 elif menu == "📊 Summary & Export":
