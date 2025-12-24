@@ -4,6 +4,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import json
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 # Page configuration
 st.set_page_config(
@@ -416,63 +419,418 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
     
     with tab2:
         st.markdown('<p class="step-header">Step 2: Stakeholder Management Tool</p>', unsafe_allow_html=True)
-        st.info("Visualize stakeholders on Power vs Interest, Power vs Legitimacy, and Power vs Urgency.")
-        
+        st.info("Visualize stakeholders on Power vs Interest, Power vs Legitimacy, and Power vs Urgency. Create subgroups for detailed analysis.")
+
         if 'relationship_data' in st.session_state.sat_data and st.session_state.sat_data['relationship_data']:
-            df = pd.DataFrame(st.session_state.sat_data['relationship_data'])
-            
-            chart_type = st.selectbox("Select Comparison", 
-                                     ["Power vs Interest", "Power vs Legitimacy", "Power vs Urgency"])
-            
-            if chart_type == "Power vs Interest":
-                fig = px.scatter(df, x='power', y='interest', 
-                               text='stakeholder',
-                               title='Power vs Interest Matrix')
-            elif chart_type == "Power vs Legitimacy":
-                fig = px.scatter(df, x='power', y='legitimacy',
-                               text='stakeholder',
-                               title='Power vs Legitimacy Matrix')
-            else:
-                fig = px.scatter(df, x='power', y='urgency',
-                               text='stakeholder',
-                               title='Power vs Urgency Matrix')
-            
-            fig.update_traces(textposition='top center')
-            fig.update_layout(height=500)
-            
-            # Add quadrant lines
-            fig.add_hline(y=5, line_dash="dash", line_color="gray")
-            fig.add_vline(x=5, line_dash="dash", line_color="gray")
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-            # Strategy recommendations
-            st.subheader("Management Strategies")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("""
-                **High Power, High Interest:**
-                - Manage Closely
-                - Key Players
-                """)
-                st.markdown("""
-                **High Power, Low Interest:**
-                - Keep Satisfied
-                - Important but passive
-                """)
-            
-            with col2:
-                st.markdown("""
-                **Low Power, High Interest:**
-                - Keep Informed
-                - Show consideration
-                """)
-                st.markdown("""
-                **Low Power, Low Interest:**
-                - Monitor
-                - Minimal effort
-                """)
+            # Add tabs for main analysis and subgroup creation
+            subtab1, subtab2 = st.tabs(["📊 Stakeholder Analysis", "👥 Subgroup Management"])
+
+            with subtab1:
+                df = pd.DataFrame(st.session_state.sat_data['relationship_data'])
+
+                chart_type = st.selectbox("Select Comparison",
+                                         ["Power vs Interest", "Power vs Legitimacy", "Power vs Urgency"])
+
+                if chart_type == "Power vs Interest":
+                    fig = px.scatter(df, x='power', y='interest',
+                                   text='stakeholder',
+                                   title='Power vs Interest Matrix')
+                elif chart_type == "Power vs Legitimacy":
+                    fig = px.scatter(df, x='power', y='legitimacy',
+                                   text='stakeholder',
+                                   title='Power vs Legitimacy Matrix')
+                else:
+                    fig = px.scatter(df, x='power', y='urgency',
+                                   text='stakeholder',
+                                   title='Power vs Urgency Matrix')
+
+                fig.update_traces(textposition='top center')
+                fig.update_layout(height=500)
+
+                # Add quadrant lines
+                fig.add_hline(y=5, line_dash="dash", line_color="gray")
+                fig.add_vline(x=5, line_dash="dash", line_color="gray")
+
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Strategy recommendations
+                st.subheader("Management Strategies")
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.markdown("""
+                    **High Power, High Interest:**
+                    - Manage Closely
+                    - Key Players
+                    """)
+                    st.markdown("""
+                    **High Power, Low Interest:**
+                    - Keep Satisfied
+                    - Important but passive
+                    """)
+
+                with col2:
+                    st.markdown("""
+                    **Low Power, High Interest:**
+                    - Keep Informed
+                    - Show consideration
+                    """)
+                    st.markdown("""
+                    **Low Power, Low Interest:**
+                    - Monitor
+                    - Minimal effort
+                    """)
+
+            with subtab2:
+                st.subheader("Create and Manage Stakeholder Subgroups")
+                st.info("Organize stakeholders into subgroups for targeted analysis and strategy development.")
+
+                # Initialize subgroup data if not exists
+                if 'subgroups' not in st.session_state.sat_data:
+                    st.session_state.sat_data['subgroups'] = {}
+                if 'subgroup_assignments' not in st.session_state.sat_data:
+                    st.session_state.sat_data['subgroup_assignments'] = {}
+
+                # Add clustering option
+                clustering_tabs = st.tabs(["📝 Manual Grouping", "🤖 Automatic Clustering"])
+
+                with clustering_tabs[0]:
+                    st.markdown("### Manual Subgroup Creation")
+
+                    # Section 1: Create/Manage Subgroups
+                    col1, col2 = st.columns([2, 1])
+
+                    with col1:
+                        st.markdown("#### Define Subgroups")
+                        subgroup_name = st.text_input("Subgroup Name", placeholder="e.g., Local Artisans, Urban Buyers, etc.")
+                        subgroup_description = st.text_area("Description", placeholder="Describe the purpose of this subgroup")
+
+                    with col2:
+                        st.markdown("#### Actions")
+                        if st.button("➕ Add Subgroup", use_container_width=True):
+                            if subgroup_name:
+                                if subgroup_name not in st.session_state.sat_data['subgroups']:
+                                    st.session_state.sat_data['subgroups'][subgroup_name] = {
+                                        'description': subgroup_description,
+                                        'members': []
+                                    }
+                                    st.success(f"✅ Subgroup '{subgroup_name}' created!")
+                                else:
+                                    st.warning("⚠️ Subgroup already exists!")
+                            else:
+                                st.error("Please enter a subgroup name")
+
+                    # Display existing subgroups
+                    if st.session_state.sat_data['subgroups']:
+                        st.markdown("---")
+                        st.markdown("#### Existing Subgroups")
+
+                        subgroups_df = pd.DataFrame([
+                            {
+                                'Subgroup': name,
+                                'Description': data['description'],
+                                'Members': len(data['members'])
+                            }
+                            for name, data in st.session_state.sat_data['subgroups'].items()
+                        ])
+                        st.dataframe(subgroups_df, use_container_width=True)
+
+                    # Section 2: Assign Stakeholders to Subgroups
+                    st.markdown("---")
+                    st.markdown("#### Assign Stakeholders to Subgroups")
+
+                    if st.session_state.sat_data['subgroups']:
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            stakeholders = [item['stakeholder'] for item in st.session_state.sat_data['relationship_data']]
+                            selected_stakeholder = st.selectbox("Select Stakeholder", stakeholders)
+
+                        with col2:
+                            subgroup_options = list(st.session_state.sat_data['subgroups'].keys())
+                            selected_subgroup = st.selectbox("Assign to Subgroup", subgroup_options)
+
+                        if st.button("Assign Stakeholder to Subgroup"):
+                            # Add stakeholder to subgroup
+                            if selected_stakeholder not in st.session_state.sat_data['subgroups'][selected_subgroup]['members']:
+                                st.session_state.sat_data['subgroups'][selected_subgroup]['members'].append(selected_stakeholder)
+                                st.session_state.sat_data['subgroup_assignments'][selected_stakeholder] = selected_subgroup
+                                st.success(f"✅ {selected_stakeholder} assigned to {selected_subgroup}")
+                            else:
+                                st.info(f"ℹ️ {selected_stakeholder} is already in {selected_subgroup}")
+
+                        # Display current assignments
+                        st.markdown("---")
+                        st.markdown("#### Current Assignments")
+
+                        for subgroup_name, subgroup_data in st.session_state.sat_data['subgroups'].items():
+                            if subgroup_data['members']:
+                                with st.expander(f"📁 {subgroup_name} ({len(subgroup_data['members'])} members)"):
+                                    for member in subgroup_data['members']:
+                                        col1, col2 = st.columns([3, 1])
+                                        with col1:
+                                            st.write(f"• {member}")
+                                        with col2:
+                                            if st.button(f"Remove", key=f"remove_{subgroup_name}_{member}"):
+                                                st.session_state.sat_data['subgroups'][subgroup_name]['members'].remove(member)
+                                                if member in st.session_state.sat_data['subgroup_assignments']:
+                                                    del st.session_state.sat_data['subgroup_assignments'][member]
+                                                st.rerun()
+
+                with clustering_tabs[1]:
+                    st.markdown("### Automatic K-Means Clustering")
+                    st.info("Use machine learning to automatically group stakeholders based on their Power, Interest, Legitimacy, and Urgency ratings.")
+
+                    # Get stakeholder data
+                    df = pd.DataFrame(st.session_state.sat_data['relationship_data'])
+
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        num_clusters = st.slider("Number of Clusters", min_value=2, max_value=min(8, len(df)), value=3)
+                        st.caption(f"Split {len(df)} stakeholders into {num_clusters} groups")
+
+                    with col2:
+                        features_to_use = st.multiselect(
+                            "Features for Clustering",
+                            ["power", "interest", "legitimacy", "urgency"],
+                            default=["power", "interest", "legitimacy", "urgency"]
+                        )
+
+                    cluster_naming = st.selectbox(
+                        "Cluster Naming Strategy",
+                        ["Automatic (based on characteristics)", "Custom (manual naming)"]
+                    )
+
+                    if st.button("🤖 Generate Clusters", type="primary", use_container_width=True):
+                        if len(features_to_use) < 2:
+                            st.error("Please select at least 2 features for clustering")
+                        else:
+                            # Prepare data for clustering
+                            X = df[features_to_use].values
+
+                            # Standardize features
+                            scaler = StandardScaler()
+                            X_scaled = scaler.fit_transform(X)
+
+                            # Perform K-means clustering
+                            kmeans = KMeans(n_clusters=num_clusters, random_state=42, n_init=10)
+                            df['cluster'] = kmeans.fit_predict(X_scaled)
+
+                            # Calculate cluster centers in original scale
+                            cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
+
+                            # Generate cluster names based on characteristics
+                            cluster_names = {}
+                            for i in range(num_clusters):
+                                cluster_df = df[df['cluster'] == i]
+                                avg_power = cluster_df['power'].mean()
+                                avg_interest = cluster_df['interest'].mean()
+
+                                # Name based on power-interest matrix
+                                if avg_power > 6.5 and avg_interest > 6.5:
+                                    name = f"Key Players (Cluster {i+1})"
+                                    desc = "High power, high interest - manage closely"
+                                elif avg_power > 6.5 and avg_interest <= 6.5:
+                                    name = f"Keep Satisfied (Cluster {i+1})"
+                                    desc = "High power, lower interest - keep satisfied"
+                                elif avg_power <= 6.5 and avg_interest > 6.5:
+                                    name = f"Keep Informed (Cluster {i+1})"
+                                    desc = "Lower power, high interest - keep informed"
+                                else:
+                                    name = f"Monitor (Cluster {i+1})"
+                                    desc = "Lower power, lower interest - monitor"
+
+                                cluster_names[i] = {'name': name, 'description': desc}
+
+                            # Create/update subgroups based on clusters
+                            for i in range(num_clusters):
+                                cluster_df = df[df['cluster'] == i]
+                                members = cluster_df['stakeholder'].tolist()
+
+                                subgroup_name = cluster_names[i]['name']
+                                subgroup_desc = cluster_names[i]['description']
+
+                                # Add cluster info to description
+                                full_desc = f"{subgroup_desc}\n\nAuto-generated using K-means clustering with {', '.join(features_to_use)}"
+
+                                st.session_state.sat_data['subgroups'][subgroup_name] = {
+                                    'description': full_desc,
+                                    'members': members
+                                }
+
+                                # Update assignments
+                                for member in members:
+                                    st.session_state.sat_data['subgroup_assignments'][member] = subgroup_name
+
+                            st.success(f"✅ Successfully created {num_clusters} subgroups using K-means clustering!")
+                            st.rerun()
+
+                    # Display clustering visualization if clusters exist
+                    if 'subgroups' in st.session_state.sat_data and st.session_state.sat_data['subgroups']:
+                        st.markdown("---")
+                        st.markdown("#### Clustering Visualization")
+
+                        # Check if we have cluster assignments
+                        df_viz = pd.DataFrame(st.session_state.sat_data['relationship_data'])
+                        df_viz['Subgroup'] = df_viz['stakeholder'].map(st.session_state.sat_data.get('subgroup_assignments', {}))
+
+                        if not df_viz['Subgroup'].isna().all():
+                            # 3D scatter plot
+                            st.markdown("##### 3D Cluster Visualization")
+
+                            fig = px.scatter_3d(
+                                df_viz,
+                                x='power',
+                                y='interest',
+                                z='legitimacy',
+                                color='Subgroup',
+                                hover_data=['stakeholder', 'urgency'],
+                                title='Stakeholder Clusters in 3D Space',
+                                labels={'power': 'Power', 'interest': 'Interest', 'legitimacy': 'Legitimacy'}
+                            )
+                            fig.update_layout(height=600)
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # 2D projections
+                            st.markdown("##### 2D Cluster Projections")
+
+                            col1, col2 = st.columns(2)
+
+                            with col1:
+                                fig1 = px.scatter(
+                                    df_viz,
+                                    x='power',
+                                    y='interest',
+                                    color='Subgroup',
+                                    hover_data=['stakeholder'],
+                                    title='Power vs Interest'
+                                )
+                                fig1.add_hline(y=5, line_dash="dash", line_color="gray", opacity=0.5)
+                                fig1.add_vline(x=5, line_dash="dash", line_color="gray", opacity=0.5)
+                                st.plotly_chart(fig1, use_container_width=True)
+
+                            with col2:
+                                fig2 = px.scatter(
+                                    df_viz,
+                                    x='legitimacy',
+                                    y='urgency',
+                                    color='Subgroup',
+                                    hover_data=['stakeholder'],
+                                    title='Legitimacy vs Urgency'
+                                )
+                                fig2.add_hline(y=5, line_dash="dash", line_color="gray", opacity=0.5)
+                                fig2.add_vline(x=5, line_dash="dash", line_color="gray", opacity=0.5)
+                                st.plotly_chart(fig2, use_container_width=True)
+
+                            # Cluster statistics
+                            st.markdown("##### Cluster Statistics")
+
+                            cluster_stats = []
+                            for subgroup_name, subgroup_data in st.session_state.sat_data['subgroups'].items():
+                                if subgroup_data['members']:
+                                    members_df = df_viz[df_viz['stakeholder'].isin(subgroup_data['members'])]
+                                    cluster_stats.append({
+                                        'Subgroup': subgroup_name,
+                                        'Count': len(subgroup_data['members']),
+                                        'Avg Power': f"{members_df['power'].mean():.2f}",
+                                        'Avg Interest': f"{members_df['interest'].mean():.2f}",
+                                        'Avg Legitimacy': f"{members_df['legitimacy'].mean():.2f}",
+                                        'Avg Urgency': f"{members_df['urgency'].mean():.2f}"
+                                    })
+
+                            if cluster_stats:
+                                stats_df = pd.DataFrame(cluster_stats)
+                                st.dataframe(stats_df, use_container_width=True)
+
+                # Section 3: Subgroup Analysis (common for both manual and automatic)
+                st.markdown("---")
+                st.markdown("### Subgroup Analysis")
+
+                if st.session_state.sat_data['subgroups']:
+                    if any(data['members'] for data in st.session_state.sat_data['subgroups'].values()):
+                        analysis_subgroup = st.selectbox(
+                            "Select Subgroup to Analyze",
+                            [name for name, data in st.session_state.sat_data['subgroups'].items() if data['members']]
+                        )
+
+                        if analysis_subgroup:
+                            members = st.session_state.sat_data['subgroups'][analysis_subgroup]['members']
+
+                            # Get ratings for subgroup members
+                            df = pd.DataFrame(st.session_state.sat_data['relationship_data'])
+                            subgroup_df = df[df['stakeholder'].isin(members)]
+
+                            if not subgroup_df.empty:
+                                # Calculate aggregated metrics
+                                col1, col2, col3, col4 = st.columns(4)
+
+                                with col1:
+                                    avg_power = subgroup_df['power'].mean()
+                                    st.metric("Avg Power", f"{avg_power:.1f}")
+
+                                with col2:
+                                    avg_interest = subgroup_df['interest'].mean()
+                                    st.metric("Avg Interest", f"{avg_interest:.1f}")
+
+                                with col3:
+                                    avg_legitimacy = subgroup_df['legitimacy'].mean()
+                                    st.metric("Avg Legitimacy", f"{avg_legitimacy:.1f}")
+
+                                with col4:
+                                    avg_urgency = subgroup_df['urgency'].mean()
+                                    st.metric("Avg Urgency", f"{avg_urgency:.1f}")
+
+                                # Radar chart for subgroup profile
+                                st.markdown("##### Subgroup Profile")
+
+                                categories = ['Power', 'Interest', 'Legitimacy', 'Urgency']
+                                values = [avg_power, avg_interest, avg_legitimacy, avg_urgency]
+
+                                fig = go.Figure()
+
+                                fig.add_trace(go.Scatterpolar(
+                                    r=values,
+                                    theta=categories,
+                                    fill='toself',
+                                    name=analysis_subgroup
+                                ))
+
+                                fig.update_layout(
+                                    polar=dict(
+                                        radialaxis=dict(
+                                            visible=True,
+                                            range=[0, 10]
+                                        )),
+                                    showlegend=True,
+                                    title=f"{analysis_subgroup} - Average Ratings Profile"
+                                )
+
+                                st.plotly_chart(fig, use_container_width=True)
+
+                                # Detailed member ratings
+                                st.markdown("##### Member Details")
+                                st.dataframe(
+                                    subgroup_df[['stakeholder', 'power', 'interest', 'legitimacy', 'urgency']],
+                                    use_container_width=True
+                                )
+
+                                # Strategic recommendations
+                                st.markdown("##### Strategic Recommendations")
+
+                                # Determine strategy based on average scores
+                                if avg_power > 5 and avg_interest > 5:
+                                    strategy = "**Manage Closely** - This is a key stakeholder group requiring active engagement and regular communication."
+                                elif avg_power > 5 and avg_interest <= 5:
+                                    strategy = "**Keep Satisfied** - Maintain satisfaction with this influential group while monitoring their interest levels."
+                                elif avg_power <= 5 and avg_interest > 5:
+                                    strategy = "**Keep Informed** - Regular updates and information sharing will maintain their support and engagement."
+                                else:
+                                    strategy = "**Monitor** - Basic monitoring is sufficient, but stay alert to changes in their position."
+
+                                st.info(strategy)
+                else:
+                    st.warning("⚠️ Please create at least one subgroup first.")
         else:
             st.warning("⚠️ Please complete Step 1 to rate stakeholders.")
     
