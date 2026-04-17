@@ -54,14 +54,170 @@ if 'sat_data' not in st.session_state:
     st.session_state.sat_data = {'relationship_matrix': pd.DataFrame()}
 if 'mat_data' not in st.session_state:
     st.session_state.mat_data = {}
+if 'nature_of_craft' not in st.session_state:
+    st.session_state.nature_of_craft = {'current_status': {}, 'desired_status': {}}
+if 'projects' not in st.session_state:
+    st.session_state.projects = {}
+if 'current_project' not in st.session_state:
+    st.session_state.current_project = None
+
+# ----- Project persistence helpers -----
+PROJECT_STATE_KEYS = ['sit_data', 'sat_data', 'mat_data', 'nature_of_craft']
+LOCALSTORAGE_KEY = 'siama_projects_v1'
+
+
+def _project_json_default(obj):
+    if isinstance(obj, pd.DataFrame):
+        return {"__dataframe__": True, "data": obj.to_dict(orient="records")}
+    if isinstance(obj, pd.Series):
+        return {"__series__": True, "data": obj.to_dict()}
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    return str(obj)
+
+
+def _project_json_hook(d):
+    if isinstance(d, dict):
+        if d.get("__dataframe__"):
+            return pd.DataFrame(d.get("data", []))
+        if d.get("__series__"):
+            return pd.Series(d.get("data", {}))
+    return d
+
+
+def serialize_projects(projects_dict):
+    return json.dumps(projects_dict, default=_project_json_default)
+
+
+def deserialize_projects(s):
+    try:
+        return json.loads(s or "{}", object_hook=_project_json_hook)
+    except Exception:
+        return {}
+
+
+def snapshot_current_state():
+    return {k: st.session_state.get(k) for k in PROJECT_STATE_KEYS}
+
+
+def apply_state(state):
+    for k in PROJECT_STATE_KEYS:
+        if k in state:
+            st.session_state[k] = state[k]
+
+
+def reset_state():
+    st.session_state.sit_data = {'stakeholders': [], 'roles': {}}
+    st.session_state.sat_data = {'relationship_matrix': pd.DataFrame()}
+    st.session_state.mat_data = {}
+    st.session_state.nature_of_craft = {'current_status': {}, 'desired_status': {}}
+
+
+# One-time hydration: if the URL carries a ?__siama_load=... payload from a
+# "Load from browser" bridge, decode it into session state.
+try:
+    _qp = st.query_params
+    _qp_get = lambda k: _qp.get(k)
+    _qp_del = lambda k: _qp.pop(k, None) if hasattr(_qp, "pop") else _qp.__delitem__(k)
+except AttributeError:
+    _qp_get = lambda k: (st.experimental_get_query_params().get(k) or [None])[0]
+    _qp_del = lambda k: st.experimental_set_query_params()
+
+_hydrate_payload = _qp_get("__siama_load")
+if _hydrate_payload:
+    try:
+        import base64 as _b64
+        raw = _hydrate_payload if isinstance(_hydrate_payload, str) else _hydrate_payload[0]
+        padded = raw + "=" * ((4 - len(raw) % 4) % 4)
+        decoded = _b64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        loaded = deserialize_projects(decoded)
+        if isinstance(loaded, dict):
+            st.session_state.projects = loaded
+            st.session_state._loaded_from_browser = len(loaded)
+    except Exception as _e:
+        st.session_state._load_error = str(_e)
+    try:
+        _qp_del("__siama_load")
+    except Exception:
+        pass
+
+
+def push_to_browser():
+    import streamlit.components.v1 as components
+    payload = serialize_projects(st.session_state.projects)
+    js_literal = json.dumps(payload)
+    components.html(
+        """
+        <div style="font: 13px -apple-system, BlinkMacSystemFont, sans-serif; color:#2c5aa0;">
+          <span id="siama-save-status">⏳ Syncing to browser…</span>
+        </div>
+        <script>
+          (function() {
+            try {
+              var target = window.top || window.parent;
+              target.localStorage.setItem("__KEY__", __PAYLOAD__);
+              document.getElementById("siama-save-status").innerText =
+                "✅ Saved to browser at " + new Date().toLocaleTimeString();
+            } catch (e) {
+              document.getElementById("siama-save-status").innerText =
+                "❌ Browser save failed: " + e.message;
+            }
+          })();
+        </script>
+        """.replace("__KEY__", LOCALSTORAGE_KEY).replace("__PAYLOAD__", js_literal),
+        height=40,
+    )
+
+
+def pull_from_browser():
+    import streamlit.components.v1 as components
+    components.html(
+        """
+        <div style="font: 13px -apple-system, BlinkMacSystemFont, sans-serif; color:#2c5aa0;">
+          <span id="siama-load-status">⏳ Reading browser storage…</span>
+        </div>
+        <script>
+          (function() {
+            try {
+              var target = window.top || window.parent;
+              var data = target.localStorage.getItem("__KEY__");
+              if (!data) {
+                document.getElementById("siama-load-status").innerText =
+                  "ℹ️ No saved projects found in this browser.";
+                return;
+              }
+              var b64 = btoa(unescape(encodeURIComponent(data)))
+                .replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+              var url = new URL(target.location.href);
+              url.searchParams.set("__siama_load", b64);
+              target.location.replace(url.toString());
+            } catch (e) {
+              document.getElementById("siama-load-status").innerText =
+                "❌ Browser load failed: " + e.message;
+            }
+          })();
+        </script>
+        """.replace("__KEY__", LOCALSTORAGE_KEY),
+        height=40,
+    )
 
 # Navigation
 st.sidebar.title("🎨 SIAMA Toolbox")
+if st.session_state.get('current_project'):
+    st.sidebar.caption(f"📁 **{st.session_state.current_project}**")
+else:
+    st.sidebar.caption("📁 *No project loaded*")
 st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "Navigate",
-    ["🏠 Home", "1️⃣ SIT - Stakeholder Identification", "2️⃣ SAT - Stakeholder Analysis",
+    ["🏠 Home", "📁 Projects", "1️⃣ SIT - Stakeholder Identification", "2️⃣ SAT - Stakeholder Analysis",
      "3️⃣ MAT - Market Analysis", "4️⃣ Nature of Craft", "📊 Summary & Export"]
 )
 
@@ -227,9 +383,19 @@ elif menu == "1️⃣ SIT - Stakeholder Identification":
                 for q, a in s['responses'].items():
                     row[q[:30]] = a[:50] if a else ""
                 data_for_df.append(row)
-            
+
             df = pd.DataFrame(data_for_df)
             st.dataframe(df, use_container_width=True)
+
+            with st.expander("🗑️ Manage stakeholder entries"):
+                for idx, s in enumerate(list(st.session_state.sit_data['stakeholders'])):
+                    c1, c2 = st.columns([5, 1])
+                    with c1:
+                        st.write(f"**{idx+1}.** {s['role']} — {s['timestamp']}")
+                    with c2:
+                        if st.button("🗑️ Delete", key=f"del_sit_sh_{idx}"):
+                            st.session_state.sit_data['stakeholders'].pop(idx)
+                            st.rerun()
             
             # Edit/Add actors
             st.subheader("Add Actor Details")
@@ -263,15 +429,28 @@ elif menu == "1️⃣ SIT - Stakeholder Identification":
         st.info("Visualize stakeholders clustered around specific roles in the supply chain.")
         
         if st.session_state.sit_data['roles']:
-            for role, actors in st.session_state.sit_data['roles'].items():
+            for role in list(st.session_state.sit_data['roles'].keys()):
+                actors = st.session_state.sit_data['roles'][role]
                 with st.expander(f"📋 {role} ({len(actors)} actors)"):
-                    for i, actor in enumerate(actors, 1):
-                        st.markdown(f"""
-                        **{i}. {actor['name']}**
-                        - Location: {actor['location']}
-                        - Contact: {actor['contact']}
-                        - Details: {actor['details']}
-                        """)
+                    for i, actor in enumerate(list(actors), 1):
+                        c1, c2 = st.columns([6, 1])
+                        with c1:
+                            st.markdown(f"""
+                            **{i}. {actor['name']}**
+                            - Location: {actor['location']}
+                            - Contact: {actor['contact']}
+                            - Details: {actor['details']}
+                            """)
+                        with c2:
+                            if st.button("🗑️", key=f"del_actor_{role}_{i-1}", help=f"Delete {actor['name']}"):
+                                st.session_state.sit_data['roles'][role].pop(i-1)
+                                st.rerun()
+                    st.markdown("---")
+                    rc1, rc2 = st.columns([3, 1])
+                    with rc2:
+                        if st.button(f"🗑️ Delete role '{role}'", key=f"del_role_{role}"):
+                            del st.session_state.sit_data['roles'][role]
+                            st.rerun()
             
             # Simple visualization
             role_counts = {role: len(actors) for role, actors in st.session_state.sit_data['roles'].items()}
@@ -414,6 +593,24 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
                     st.subheader("Current Ratings")
                     df = pd.DataFrame(st.session_state.sat_data['relationship_data'])
                     st.dataframe(df, use_container_width=True)
+
+                    with st.expander("🗑️ Manage rating entries"):
+                        for idx, r in enumerate(list(st.session_state.sat_data['relationship_data'])):
+                            c1, c2 = st.columns([5, 1])
+                            with c1:
+                                st.write(f"**{idx+1}.** {r.get('stakeholder','?')} — "
+                                         f"P:{r.get('power','-')}, I:{r.get('interest','-')}, "
+                                         f"L:{r.get('legitimacy','-')}, U:{r.get('urgency','-')}")
+                            with c2:
+                                if st.button("🗑️ Delete", key=f"del_sat_rat_{idx}"):
+                                    removed = st.session_state.sat_data['relationship_data'].pop(idx)
+                                    # Also clean up subgroup memberships referencing this stakeholder
+                                    sh_name = removed.get('stakeholder')
+                                    for sg in st.session_state.sat_data.get('subgroups', {}).values():
+                                        if sh_name in sg.get('members', []):
+                                            sg['members'].remove(sh_name)
+                                    st.session_state.sat_data.get('subgroup_assignments', {}).pop(sh_name, None)
+                                    st.rerun()
         else:
             st.warning("⚠️ Please complete SIT first to identify stakeholders.")
     
@@ -534,6 +731,20 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
                             for name, data in st.session_state.sat_data['subgroups'].items()
                         ])
                         st.dataframe(subgroups_df, use_container_width=True)
+
+                        with st.expander("🗑️ Delete a subgroup"):
+                            sg_names = list(st.session_state.sat_data['subgroups'].keys())
+                            sg_to_delete = st.selectbox("Select subgroup to delete", sg_names, key="_sg_del_sel")
+                            if st.button("🗑️ Delete selected subgroup", key="_sg_del_btn"):
+                                if sg_to_delete and sg_to_delete in st.session_state.sat_data['subgroups']:
+                                    # Clear member assignments pointing at this subgroup
+                                    assignments = st.session_state.sat_data.get('subgroup_assignments', {})
+                                    for member, sg in list(assignments.items()):
+                                        if sg == sg_to_delete:
+                                            del assignments[member]
+                                    del st.session_state.sat_data['subgroups'][sg_to_delete]
+                                    st.success(f"Deleted subgroup '{sg_to_delete}'.")
+                                    st.rerun()
 
                     # Section 2: Assign Stakeholders to Subgroups
                     st.markdown("---")
@@ -865,7 +1076,19 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
             # Show conflict matrix
             if 'conflict_data' in st.session_state.sat_data and st.session_state.sat_data['conflict_data']:
                 df_conflict = pd.DataFrame(st.session_state.sat_data['conflict_data'])
-                
+
+                with st.expander("🗑️ Manage conflict entries"):
+                    for idx, c in enumerate(list(st.session_state.sat_data['conflict_data'])):
+                        cc1, cc2 = st.columns([5, 1])
+                        with cc1:
+                            st.write(f"**{idx+1}.** {c.get('stakeholder','?')} — "
+                                     f"coop:{c.get('cooperativeness','-')}, "
+                                     f"comp:{c.get('competitiveness','-')}")
+                        with cc2:
+                            if st.button("🗑️ Delete", key=f"del_conflict_{idx}"):
+                                st.session_state.sat_data['conflict_data'].pop(idx)
+                                st.rerun()
+
                 fig = px.scatter(df_conflict, x='competitiveness', y='cooperativeness',
                                text='stakeholder',
                                title='Conflict Resolution Matrix')
@@ -918,11 +1141,18 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
             # Display summary
             if 'knowledge_data' in st.session_state.sat_data:
                 st.subheader("Knowledge & Responsibility Summary")
-                for group, data in st.session_state.sat_data['knowledge_data'].items():
-                    st.markdown(f"**{group}:**")
-                    st.write(f"- Knowledge: {data['knowledge']}")
-                    st.write(f"- Responsibilities: {data['responsibilities']}")
-                    st.write(f"- Skills: {data['skills']}")
+                for group in list(st.session_state.sat_data['knowledge_data'].keys()):
+                    data = st.session_state.sat_data['knowledge_data'][group]
+                    c1, c2 = st.columns([6, 1])
+                    with c1:
+                        st.markdown(f"**{group}:**")
+                        st.write(f"- Knowledge: {data['knowledge']}")
+                        st.write(f"- Responsibilities: {data['responsibilities']}")
+                        st.write(f"- Skills: {data['skills']}")
+                    with c2:
+                        if st.button("🗑️", key=f"del_knowledge_{group}", help=f"Delete {group} entry"):
+                            del st.session_state.sat_data['knowledge_data'][group]
+                            st.rerun()
         else:
             st.warning("⚠️ Please complete Step 1 first.")
     
@@ -970,7 +1200,7 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
             # Display existing value maps
             if 'value_map' in st.session_state.sat_data and st.session_state.sat_data['value_map']:
                 st.subheader("Saved Value Maps")
-                for vm in st.session_state.sat_data['value_map']:
+                for vm_idx, vm in enumerate(list(st.session_state.sat_data['value_map'])):
                     with st.expander(f"📊 {vm['stakeholder']}"):
                         col1, col2 = st.columns(2)
                         with col1:
@@ -983,6 +1213,9 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
                             st.write(f"Pain Relievers: {vm['pain_relievers']}")
                             st.write(f"Gain Creators: {vm['gain_creators']}")
                             st.write(f"Products/Services: {vm['products_services']}")
+                        if st.button("🗑️ Delete this value map", key=f"del_vm_{vm_idx}"):
+                            st.session_state.sat_data['value_map'].pop(vm_idx)
+                            st.rerun()
         else:
             st.warning("⚠️ Please complete Step 1 first.")
 
@@ -1004,7 +1237,28 @@ elif menu == "3️⃣ MAT - Market Analysis":
         "Complaint Data Analysis",
         "Brand Audit"
     ])
-    
+
+    # Map the tool label to its mat_data key(s) so users can clear a whole tool's data.
+    _mat_tool_keys = {
+        "PESTEL Analysis": ["pestel"],
+        "Gap Analysis": ["gap"],
+        "Behavioral Segmentation": ["behavioral_segments"],
+        "User Persona": ["personas"],
+        "Customer Journey Map": ["customer_journey"],
+        "Mystery Shopping": ["mystery_shopping"],
+        "Complaint Data Analysis": ["complaints"],
+        "Brand Audit": ["brand_audit"],
+    }
+    _clear_keys = [k for k in _mat_tool_keys.get(mat_tools, []) if k in st.session_state.mat_data]
+    if _clear_keys:
+        with st.expander(f"🗑️ Clear all {mat_tools} data"):
+            st.caption("This removes every entry recorded under this tool. Cannot be undone (unless you saved the project).")
+            if st.button(f"🗑️ Clear {mat_tools} data", key=f"_clear_mat_{mat_tools}"):
+                for k in _clear_keys:
+                    st.session_state.mat_data.pop(k, None)
+                st.success(f"Cleared {mat_tools} data.")
+                st.rerun()
+
     if mat_tools == "PESTEL Analysis":
         st.subheader("PESTEL Analysis")
         st.info("Analyze Political, Economic, Social, Technological, Environmental, and Legal factors.")
@@ -1123,13 +1377,16 @@ elif menu == "3️⃣ MAT - Market Analysis":
         # Display segments
         if 'behavioral_segments' in st.session_state.mat_data:
             st.subheader("Customer Segments")
-            for seg in st.session_state.mat_data['behavioral_segments']:
+            for seg_idx, seg in enumerate(list(st.session_state.mat_data['behavioral_segments'])):
                 with st.expander(f"👥 {seg['name']}"):
                     st.write(f"**Purchase Behavior:** {seg['purchase_behavior']}")
                     st.write(f"**Usage Rate:** {seg['usage_rate']}")
                     st.write(f"**Benefits Sought:** {seg['benefits_sought']}")
                     st.write(f"**Loyalty Status:** {seg['loyalty_status']}")
                     st.write(f"**Occasion:** {seg['occasion']}")
+                    if st.button("🗑️ Delete this segment", key=f"del_seg_{seg_idx}"):
+                        st.session_state.mat_data['behavioral_segments'].pop(seg_idx)
+                        st.rerun()
     
     elif mat_tools == "User Persona":
         st.subheader("User Persona")
@@ -1176,7 +1433,7 @@ elif menu == "3️⃣ MAT - Market Analysis":
         # Display personas
         if 'personas' in st.session_state.mat_data:
             st.subheader("Created Personas")
-            for persona in st.session_state.mat_data['personas']:
+            for p_idx, persona in enumerate(list(st.session_state.mat_data['personas'])):
                 with st.expander(f"👤 {persona['name']}"):
                     col1, col2 = st.columns(2)
                     with col1:
@@ -1193,6 +1450,9 @@ elif menu == "3️⃣ MAT - Market Analysis":
                     st.write(f"**Goals:** {persona['goals']}")
                     st.write(f"**Pain Points:** {persona['pain_points']}")
                     st.write(f"**Shopping Habits:** {persona['shopping_habits']}")
+                    if st.button("🗑️ Delete this persona", key=f"del_persona_{p_idx}"):
+                        st.session_state.mat_data['personas'].pop(p_idx)
+                        st.rerun()
     
     elif mat_tools == "Customer Journey Map":
         st.subheader("Customer Journey Map")
@@ -1256,7 +1516,22 @@ elif menu == "3️⃣ MAT - Market Analysis":
                 'recommendations': recommendations
             })
             st.success("✅ Mystery Shopping Report saved!")
-    
+
+        if 'mystery_shopping' in st.session_state.mat_data and st.session_state.mat_data['mystery_shopping']:
+            st.subheader("Saved Mystery Shopping Reports")
+            for ms_idx, ms in enumerate(list(st.session_state.mat_data['mystery_shopping'])):
+                with st.expander(f"🛍️ {ms.get('location','?')} — {ms.get('date','')}"):
+                    st.write(f"Ambiance: {ms.get('ambiance')}, Accessibility: {ms.get('accessibility')}, "
+                             f"Display: {ms.get('product_display')}, Staff: {ms.get('staff_behavior')}, "
+                             f"Knowledge: {ms.get('product_knowledge')}, Response: {ms.get('response_time')}")
+                    if ms.get('observations'):
+                        st.write(f"**Observations:** {ms['observations']}")
+                    if ms.get('recommendations'):
+                        st.write(f"**Recommendations:** {ms['recommendations']}")
+                    if st.button("🗑️ Delete this report", key=f"del_ms_{ms_idx}"):
+                        st.session_state.mat_data['mystery_shopping'].pop(ms_idx)
+                        st.rerun()
+
     elif mat_tools == "Complaint Data Analysis":
         st.subheader("Complaint Data Analysis")
         st.info("Analyze customer complaints to identify patterns and improvement areas.")
@@ -1310,11 +1585,24 @@ elif menu == "3️⃣ MAT - Market Analysis":
             with col2:
                 # Severity distribution
                 severity_counts = df_complaints['severity'].value_counts()
-                fig_sev = px.bar(x=severity_counts.index, 
+                fig_sev = px.bar(x=severity_counts.index,
                                y=severity_counts.values,
                                title="Complaints by Severity")
                 st.plotly_chart(fig_sev, use_container_width=True)
-    
+
+            with st.expander("🗑️ Manage complaint entries"):
+                for idx, c in enumerate(list(st.session_state.mat_data['complaints'])):
+                    cc1, cc2 = st.columns([5, 1])
+                    with cc1:
+                        st.write(f"**{idx+1}.** [{c.get('severity','?')}] {c.get('category','?')} — "
+                                 f"{c.get('source','?')} ({c.get('date','')})")
+                        if c.get('description'):
+                            st.caption(c['description'][:120])
+                    with cc2:
+                        if st.button("🗑️ Delete", key=f"del_complaint_{idx}"):
+                            st.session_state.mat_data['complaints'].pop(idx)
+                            st.rerun()
+
     elif mat_tools == "Brand Audit":
         st.subheader("Brand Audit")
         st.info("Evaluate brand perception, positioning, and performance.")
@@ -1666,6 +1954,183 @@ elif menu == "4️⃣ Nature of Craft":
 
     else:
         st.info("👆 Complete the Current and Desired Status sections above to see gap analysis and recommendations.")
+
+# Projects
+elif menu == "📁 Projects":
+    st.markdown('<div class="main-header">Projects</div>', unsafe_allow_html=True)
+
+    if st.session_state.pop("_loaded_from_browser", None):
+        st.success(f"✅ Loaded {len(st.session_state.projects)} project(s) from browser storage.")
+    if st.session_state.pop("_load_error", None):
+        st.error(f"Browser load error: {st.session_state.get('_load_error', '')}")
+
+    st.markdown("""
+        <div class="toolkit-card">
+        <h3>📁 Manage Projects</h3>
+        Save, load, rename, and delete SIAMA analyses as named projects. Each project bundles your
+        SIT, SAT, MAT, and Nature of Craft data. Use <b>Browser Storage</b> to keep projects on this
+        device between visits, and <b>Export/Import</b> to move them to other devices or share with others.
+        </div>
+    """, unsafe_allow_html=True)
+
+    if st.session_state.current_project:
+        st.info(f"🟢 Currently editing: **{st.session_state.current_project}**")
+    else:
+        st.info("⚪ No project loaded. Your current edits are held in this session only — save them as a project to keep them.")
+
+    st.markdown("---")
+
+    tab_list, tab_create, tab_transfer = st.tabs(
+        ["📋 My Projects", "➕ New / Save Current", "💾 Browser / Export / Import"]
+    )
+
+    with tab_create:
+        st.markdown("### Save current work as a new project")
+        new_name = st.text_input("Project name", key="_new_project_name", placeholder="e.g. Bandhani Training Program – Kutch 2026")
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            if st.button("💾 Save as new project", type="primary", key="_save_new_btn"):
+                name = (new_name or "").strip()
+                if not name:
+                    st.error("Project name cannot be empty.")
+                elif name in st.session_state.projects:
+                    st.error(f"A project named '{name}' already exists. Rename it, or update it from the '📋 My Projects' tab.")
+                else:
+                    now = datetime.now().isoformat(timespec="seconds")
+                    st.session_state.projects[name] = {
+                        "created": now, "updated": now, **snapshot_current_state()
+                    }
+                    st.session_state.current_project = name
+                    st.success(f"✅ Saved project '{name}'.")
+                    st.rerun()
+        with cc2:
+            if st.button("🆕 Start new blank project", key="_new_blank_btn"):
+                reset_state()
+                st.session_state.current_project = None
+                st.success("Started a new blank analysis. Current data has been cleared.")
+                st.rerun()
+
+        if st.session_state.current_project:
+            st.markdown("---")
+            st.markdown(f"### Update the currently loaded project")
+            if st.button(f"💾 Save changes to '{st.session_state.current_project}'", type="primary", key="_save_update_btn"):
+                name = st.session_state.current_project
+                prev = st.session_state.projects.get(name, {})
+                st.session_state.projects[name] = {
+                    "created": prev.get("created", datetime.now().isoformat(timespec="seconds")),
+                    "updated": datetime.now().isoformat(timespec="seconds"),
+                    **snapshot_current_state()
+                }
+                st.success(f"✅ Updated '{name}'.")
+                st.rerun()
+
+    with tab_list:
+        if not st.session_state.projects:
+            st.info("No projects yet. Save one in the '➕ New / Save Current' tab, or load from Browser Storage / Import.")
+        else:
+            st.markdown(f"### {len(st.session_state.projects)} project(s)")
+            for pname in sorted(st.session_state.projects.keys()):
+                proj = st.session_state.projects[pname]
+                header_mark = "🟢 " if pname == st.session_state.current_project else ""
+                with st.expander(
+                    f"{header_mark}📁 **{pname}** — updated {proj.get('updated', 'N/A')}",
+                    expanded=(pname == st.session_state.current_project),
+                ):
+                    sit_count = len(proj.get('sit_data', {}).get('stakeholders', []))
+                    sat_items = len(proj.get('sat_data', {}).get('relationship_data', []) or [])
+                    mat_items = len(proj.get('mat_data', {}) or {})
+                    st.caption(
+                        f"SIT: {sit_count} stakeholders · SAT: {sat_items} relationships · "
+                        f"MAT: {mat_items} tools · created {proj.get('created', 'N/A')}"
+                    )
+
+                    lc, rc, dc = st.columns([1, 2, 1])
+                    with lc:
+                        if st.button("📂 Load", key=f"load_{pname}"):
+                            apply_state(proj)
+                            st.session_state.current_project = pname
+                            st.success(f"Loaded '{pname}'.")
+                            st.rerun()
+                    with rc:
+                        new_n = st.text_input("Rename to", value=pname, key=f"rename_{pname}", label_visibility="collapsed")
+                        if st.button("✏️ Rename", key=f"rename_btn_{pname}"):
+                            target = (new_n or "").strip()
+                            if not target or target == pname:
+                                st.info("Enter a different name to rename.")
+                            elif target in st.session_state.projects:
+                                st.error(f"A project named '{target}' already exists.")
+                            else:
+                                st.session_state.projects[target] = st.session_state.projects.pop(pname)
+                                if st.session_state.current_project == pname:
+                                    st.session_state.current_project = target
+                                st.success(f"Renamed to '{target}'.")
+                                st.rerun()
+                    with dc:
+                        confirm = st.checkbox("Confirm", key=f"confirm_del_{pname}", help="Required before deleting")
+                        if st.button("🗑️ Delete", key=f"del_{pname}", disabled=not confirm):
+                            del st.session_state.projects[pname]
+                            if st.session_state.current_project == pname:
+                                st.session_state.current_project = None
+                            st.success(f"Deleted '{pname}'.")
+                            st.rerun()
+
+    with tab_transfer:
+        st.markdown("### 💾 Browser storage")
+        st.caption("Projects are saved to this browser on this device. Clearing browser data will remove them.")
+        bc1, bc2 = st.columns(2)
+        with bc1:
+            if st.button("💾 Save ALL projects to browser", type="primary", key="_push_browser_btn"):
+                push_to_browser()
+        with bc2:
+            if st.button("📥 Load projects from browser", key="_pull_browser_btn"):
+                pull_from_browser()
+
+        st.markdown("---")
+        st.markdown("### 📤 Export / 📥 Import (portable JSON)")
+
+        if st.session_state.projects:
+            bundle = serialize_projects(st.session_state.projects)
+            st.download_button(
+                "📥 Download all projects as JSON",
+                data=bundle,
+                file_name=f"siama_projects_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json",
+                key="_download_bundle",
+            )
+        else:
+            st.caption("No projects to export yet.")
+
+        uploaded = st.file_uploader("Import projects JSON", type=["json"], key="_import_json")
+        if uploaded is not None:
+            try:
+                content = uploaded.read().decode("utf-8")
+                imported = deserialize_projects(content)
+                if not isinstance(imported, dict):
+                    st.error("Invalid format: expected a JSON object mapping project names to data.")
+                else:
+                    st.markdown(f"**{len(imported)} project(s)** in this file: {', '.join(list(imported.keys())[:5])}{'…' if len(imported) > 5 else ''}")
+                    merge_choice = st.radio(
+                        "If names collide:",
+                        ["Skip duplicates", "Overwrite existing"],
+                        horizontal=True,
+                        key="_merge_choice",
+                    )
+                    if st.button("✅ Import into this session", key="_import_btn"):
+                        added, overwritten, skipped = 0, 0, 0
+                        for name, proj in imported.items():
+                            if name in st.session_state.projects:
+                                if merge_choice == "Overwrite existing":
+                                    st.session_state.projects[name] = proj
+                                    overwritten += 1
+                                else:
+                                    skipped += 1
+                            else:
+                                st.session_state.projects[name] = proj
+                                added += 1
+                        st.success(f"Imported — added: {added}, overwritten: {overwritten}, skipped: {skipped}")
+                        st.rerun()
+            except Exception as e:
+                st.error(f"Import failed: {e}")
 
 # Summary & Export
 elif menu == "📊 Summary & Export":
