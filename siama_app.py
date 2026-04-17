@@ -217,7 +217,7 @@ st.sidebar.markdown("---")
 
 menu = st.sidebar.radio(
     "Navigate",
-    ["🏠 Home", "📁 Projects", "1️⃣ SIT - Stakeholder Identification", "2️⃣ SAT - Stakeholder Analysis",
+    ["🏠 Home", "📁 Projects", "📊 Dashboard", "1️⃣ SIT - Stakeholder Identification", "2️⃣ SAT - Stakeholder Analysis",
      "3️⃣ MAT - Market Analysis", "4️⃣ Nature of Craft", "📊 Summary & Export"]
 )
 
@@ -461,6 +461,46 @@ elif menu == "1️⃣ SIT - Stakeholder Identification":
                 title='Stakeholder Distribution by Role'
             )
             st.plotly_chart(fig, use_container_width=True)
+
+            # Supply-chain Sankey flow diagram
+            st.markdown("---")
+            st.subheader("🔀 Supply-Chain Flow")
+            st.caption("Each node is a role; link thickness is the minimum of adjacent actor counts (what flows through).")
+
+            canonical_order = ["Supplier", "Producer", "Refiner", "Marketer", "Buyer"]
+            ordered_roles = [r for r in canonical_order if r in role_counts and role_counts[r] > 0]
+            extras = [r for r in role_counts.keys() if r not in canonical_order and role_counts[r] > 0]
+            ordered_roles.extend(extras)
+
+            if len(ordered_roles) >= 2:
+                node_labels = [f"{r} ({role_counts[r]})" for r in ordered_roles]
+                palette = ["#1f77b4", "#2ca02c", "#ff7f0e", "#d62728", "#9467bd", "#8c564b", "#e377c2"]
+                node_colors = [palette[i % len(palette)] for i in range(len(ordered_roles))]
+                src, tgt, val, link_colors = [], [], [], []
+                for i in range(len(ordered_roles) - 1):
+                    a, b = ordered_roles[i], ordered_roles[i + 1]
+                    flow = min(role_counts[a], role_counts[b])
+                    if flow > 0:
+                        src.append(i)
+                        tgt.append(i + 1)
+                        val.append(flow)
+                        # Lighten the source color for the link
+                        link_colors.append("rgba(31,119,180,0.35)")
+
+                sankey = go.Figure(go.Sankey(
+                    arrangement="snap",
+                    node=dict(
+                        pad=18, thickness=22,
+                        line=dict(color="white", width=1),
+                        label=node_labels, color=node_colors,
+                    ),
+                    link=dict(source=src, target=tgt, value=val, color=link_colors),
+                ))
+                sankey.update_layout(height=380, margin=dict(l=10, r=10, t=30, b=10),
+                                     title="Actors flowing through the value chain")
+                st.plotly_chart(sankey, use_container_width=True)
+            else:
+                st.info("Add actors to at least two canonical roles (Supplier / Producer / Refiner / Marketer / Buyer) to see the supply-chain flow.")
         else:
             st.warning("⚠️ Please add actors in Step 2 first.")
     
@@ -677,6 +717,64 @@ elif menu == "2️⃣ SAT - Stakeholder Analysis":
                     - Monitor
                     - Minimal effort
                     """)
+
+                # Stakeholder network graph
+                st.markdown("---")
+                st.subheader("🕸️ Stakeholder Network")
+                st.caption("Nodes positioned by Power × Interest, sized by Power, colored by Interest. Edges connect stakeholders who share a subgroup.")
+
+                rdata = st.session_state.sat_data['relationship_data']
+                if rdata:
+                    names = [r['stakeholder'] for r in rdata]
+                    xs = [float(r.get('power', 0) or 0) for r in rdata]
+                    ys = [float(r.get('interest', 0) or 0) for r in rdata]
+                    name_to_idx = {n: i for i, n in enumerate(names)}
+
+                    # Build edges from shared subgroup membership
+                    edge_x, edge_y = [], []
+                    edge_count = 0
+                    for sg in st.session_state.sat_data.get('subgroups', {}).values():
+                        members = [m for m in sg.get('members', []) if m in name_to_idx]
+                        for i in range(len(members)):
+                            for j in range(i + 1, len(members)):
+                                a, b = name_to_idx[members[i]], name_to_idx[members[j]]
+                                edge_x += [xs[a], xs[b], None]
+                                edge_y += [ys[a], ys[b], None]
+                                edge_count += 1
+
+                    net = go.Figure()
+                    if edge_x:
+                        net.add_trace(go.Scatter(
+                            x=edge_x, y=edge_y, mode="lines",
+                            line=dict(width=1, color="rgba(100,100,100,0.35)"),
+                            hoverinfo="skip", showlegend=False,
+                        ))
+                    # Node sizes: scale power 1-10 → 12-48 px
+                    sizes = [12 + (p * 3.6) for p in xs]
+                    net.add_trace(go.Scatter(
+                        x=xs, y=ys, mode="markers+text",
+                        text=names, textposition="top center",
+                        marker=dict(
+                            size=sizes, color=ys, colorscale="Viridis",
+                            cmin=1, cmax=10, showscale=True,
+                            colorbar=dict(title="Interest"),
+                            line=dict(width=1, color="white"),
+                        ),
+                        hovertemplate="<b>%{text}</b><br>Power: %{x}<br>Interest: %{y}<extra></extra>",
+                        showlegend=False,
+                    ))
+                    net.add_hline(y=5, line_dash="dash", line_color="lightgray")
+                    net.add_vline(x=5, line_dash="dash", line_color="lightgray")
+                    net.update_layout(
+                        height=560,
+                        xaxis=dict(title="Power", range=[0, 11], zeroline=False),
+                        yaxis=dict(title="Interest", range=[0, 11], zeroline=False),
+                        margin=dict(l=10, r=10, t=30, b=10),
+                        title=f"{len(names)} stakeholders · {edge_count} shared-subgroup edge(s)",
+                    )
+                    st.plotly_chart(net, use_container_width=True)
+                    if edge_count == 0:
+                        st.info("No subgroup connections yet — create subgroups in the next tab to see relationship edges.")
 
             with subtab2:
                 st.subheader("Create and Manage Stakeholder Subgroups")
@@ -1954,6 +2052,175 @@ elif menu == "4️⃣ Nature of Craft":
 
     else:
         st.info("👆 Complete the Current and Desired Status sections above to see gap analysis and recommendations.")
+
+# Dashboard
+elif menu == "📊 Dashboard":
+    st.markdown('<div class="main-header">Dashboard</div>', unsafe_allow_html=True)
+    if st.session_state.get('current_project'):
+        st.caption(f"📁 Project: **{st.session_state.current_project}**")
+    st.markdown("""
+        <div class="toolkit-card">
+        <h3>📊 At-a-glance synthesis</h3>
+        A single view of everything you've captured across SIT, SAT, MAT, and Nature of Craft.
+        </div>
+    """, unsafe_allow_html=True)
+
+    sit = st.session_state.sit_data
+    sat = st.session_state.sat_data
+    mat = st.session_state.mat_data
+    noc = st.session_state.get('nature_of_craft', {'current_status': {}, 'desired_status': {}})
+
+    total_actors = sum(len(a) for a in sit.get('roles', {}).values())
+    rel_data = sat.get('relationship_data') or []
+    n_ratings = len(rel_data)
+    n_subgroups = len(sat.get('subgroups') or {})
+    n_mat_tools = len(mat)
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Actors mapped (SIT)", total_actors)
+    m2.metric("Stakeholders rated (SAT)", n_ratings)
+    m3.metric("Subgroups", n_subgroups)
+    m4.metric("MAT tools used", n_mat_tools)
+
+    if total_actors == 0 and n_ratings == 0 and n_mat_tools == 0:
+        st.info("No data yet. Populate SIT / SAT / MAT from the sidebar — this page will fill up automatically.")
+    else:
+        st.markdown("---")
+        left, right = st.columns(2)
+
+        with left:
+            st.subheader("Actors by role")
+            if sit.get('roles'):
+                role_counts = {role: len(actors) for role, actors in sit['roles'].items() if len(actors) > 0}
+                if role_counts:
+                    bar = px.bar(
+                        x=list(role_counts.keys()), y=list(role_counts.values()),
+                        labels={'x': 'Role', 'y': 'Actors'},
+                        color=list(role_counts.keys()),
+                    )
+                    bar.update_layout(height=320, showlegend=False, margin=dict(l=10, r=10, t=10, b=10))
+                    st.plotly_chart(bar, use_container_width=True)
+                else:
+                    st.caption("No actors recorded yet in SIT.")
+            else:
+                st.caption("No actors recorded yet in SIT.")
+
+            st.subheader("Stakeholder priority matrix")
+            if rel_data:
+                df = pd.DataFrame(rel_data)
+                df['priority_score'] = df['power'].astype(float) * df['interest'].astype(float)
+                sc = px.scatter(
+                    df, x='power', y='interest', text='stakeholder',
+                    size='priority_score', color='priority_score',
+                    color_continuous_scale='Reds', size_max=40,
+                )
+                sc.add_hline(y=5, line_dash='dash', line_color='lightgray')
+                sc.add_vline(x=5, line_dash='dash', line_color='lightgray')
+                sc.update_traces(textposition='top center')
+                sc.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10),
+                                 xaxis=dict(range=[0, 11]), yaxis=dict(range=[0, 11]))
+                st.plotly_chart(sc, use_container_width=True)
+            else:
+                st.caption("No stakeholder ratings yet.")
+
+        with right:
+            st.subheader("Top 5 priority stakeholders")
+            if rel_data:
+                df = pd.DataFrame(rel_data).copy()
+                df['priority_score'] = df['power'].astype(float) * df['interest'].astype(float)
+                top = df.sort_values('priority_score', ascending=True).tail(5)
+                hb = px.bar(top, x='priority_score', y='stakeholder', orientation='h',
+                            color='priority_score', color_continuous_scale='Reds')
+                hb.update_layout(height=320, showlegend=False, coloraxis_showscale=False,
+                                 margin=dict(l=10, r=10, t=10, b=10),
+                                 yaxis=dict(title=''), xaxis=dict(title='Power × Interest'))
+                st.plotly_chart(hb, use_container_width=True)
+            else:
+                st.caption("No stakeholder ratings yet.")
+
+            st.subheader("Engagement quadrants (SAT)")
+            if rel_data:
+                df = pd.DataFrame(rel_data)
+                def _quad(r):
+                    hp, hi = r['power'] > 5, r['interest'] > 5
+                    if hp and hi: return "Manage closely"
+                    if hp and not hi: return "Keep satisfied"
+                    if not hp and hi: return "Keep informed"
+                    return "Monitor"
+                df['quadrant'] = df.apply(_quad, axis=1)
+                qc = df['quadrant'].value_counts()
+                pie = px.pie(values=qc.values, names=qc.index, hole=0.45,
+                             color_discrete_sequence=px.colors.qualitative.Set2)
+                pie.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10))
+                st.plotly_chart(pie, use_container_width=True)
+            else:
+                st.caption("No stakeholder ratings yet.")
+
+        st.markdown("---")
+        st.subheader("MAT coverage & signals")
+        mc1, mc2, mc3 = st.columns(3)
+
+        with mc1:
+            st.markdown("**Tools completed**")
+            tool_labels = {
+                'pestel': 'PESTEL', 'gap': 'Gap',
+                'behavioral_segments': 'Segmentation', 'personas': 'Personas',
+                'customer_journey': 'Journey', 'mystery_shopping': 'Mystery',
+                'complaints': 'Complaints', 'brand_audit': 'Brand',
+            }
+            done = [label for key, label in tool_labels.items() if key in mat]
+            missing = [label for key, label in tool_labels.items() if key not in mat]
+            if done:
+                st.success("Done: " + ", ".join(done))
+            if missing:
+                st.info("To do: " + ", ".join(missing))
+
+        with mc2:
+            st.markdown("**Complaint severity**")
+            comps = mat.get('complaints') or []
+            if comps:
+                sev = pd.DataFrame(comps)['severity'].value_counts()
+                order = ['Critical', 'High', 'Medium', 'Low']
+                sev = sev.reindex([o for o in order if o in sev.index])
+                sbar = px.bar(x=sev.index, y=sev.values,
+                              color=sev.index,
+                              color_discrete_map={'Critical': '#d62728', 'High': '#ff7f0e',
+                                                  'Medium': '#ffbb33', 'Low': '#2ca02c'})
+                sbar.update_layout(height=260, showlegend=False,
+                                   margin=dict(l=10, r=10, t=10, b=10),
+                                   xaxis=dict(title=''), yaxis=dict(title='Count'))
+                st.plotly_chart(sbar, use_container_width=True)
+            else:
+                st.caption("No complaints logged.")
+
+        with mc3:
+            st.markdown("**Segments & personas**")
+            segs = len(mat.get('behavioral_segments') or [])
+            pers = len(mat.get('personas') or [])
+            reports = len(mat.get('mystery_shopping') or [])
+            st.metric("Segments", segs)
+            st.metric("Personas", pers)
+            st.metric("Mystery-shopping reports", reports)
+
+        # Nature of Craft coverage
+        cur = noc.get('current_status', {}) or {}
+        des = noc.get('desired_status', {}) or {}
+        if cur or des:
+            st.markdown("---")
+            st.subheader("Nature of Craft — 5P coverage")
+            dims = ["Product", "Proficiency", "Process", "Purpose", "Portrayal"]
+            def _count_true(status, dim):
+                return sum(1 for k, v in status.items() if v and dim.lower() in str(k).lower())
+            current_vals = [_count_true(cur, d) for d in dims]
+            desired_vals = [_count_true(des, d) for d in dims]
+            radar = go.Figure()
+            radar.add_trace(go.Scatterpolar(r=current_vals + [current_vals[0]], theta=dims + [dims[0]],
+                                            fill='toself', name='Current', line_color='#1f77b4'))
+            radar.add_trace(go.Scatterpolar(r=desired_vals + [desired_vals[0]], theta=dims + [dims[0]],
+                                            fill='toself', name='Desired', line_color='#d62728'))
+            radar.update_layout(height=420, margin=dict(l=10, r=10, t=30, b=10),
+                                polar=dict(radialaxis=dict(visible=True)))
+            st.plotly_chart(radar, use_container_width=True)
 
 # Projects
 elif menu == "📁 Projects":
