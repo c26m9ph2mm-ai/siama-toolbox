@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SIAMA Toolbox</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@stlite/browser@0.85.1/build/stlite.css"
+    />
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import { mount } from "https://cdn.jsdelivr.net/npm/@stlite/browser@0.85.1/build/stlite.js";
+      mount(
+        {
+          requirements: ["pandas", "plotly", "numpy", "scikit-learn", "openpyxl"],
+          entrypoint: "siama_app.py",
+          files: {
+            "siama_app.py": { url: "./siama_app.py" },
+            "schematic.jpg": { url: "./schematic.jpg" }
+          }
+        },
+        document.getElementById("root")
+      );
+    </script>
+  </body>
+</html>
